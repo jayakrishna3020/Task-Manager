@@ -1,157 +1,119 @@
-import React, { useState, useEffect } from "react";
-import "./App.css";
-import TaskInput from "./components/TaskInput";
-import TaskList from "./components/TaskList";
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
-const CATEGORIES = ["General", "Work", "Personal", "Shopping", "Health"];
+// Styling Imports
+import './styles/theme.css';
+import './styles/global.css';
 
-function App() {
-  const [tasks, setTasks] = useState([]);
-  const [filter, setFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("date-desc");
+// Context Providers
+import { AuthProvider } from './contexts/AuthContext';
+import { CartProvider } from './contexts/CartContext';
 
-  useEffect(() => {
-    const savedTasks =
-      JSON.parse(localStorage.getItem("tasks")) || [];
-    setTasks(savedTasks);
-  }, []);
+// Static Components
+import Navbar from './components/Navbar/Navbar';
 
-  useEffect(() => {
-    localStorage.setItem("tasks", JSON.stringify(tasks));
-  }, [tasks]);
+// Lazy Loaded Pages for Code Splitting & Performance Optimization
+const Home = lazy(() => import('./pages/Home'));
+const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+const CartPage = lazy(() => import('./pages/CartPage'));
+const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
+const LoginRegister = lazy(() => import('./pages/LoginRegister'));
 
-  const addTask = (text, category) => {
-    const newTask = {
-      id: Date.now(),
-      text,
-      completed: false,
-      category: category || "General",
-      createdAt: new Date().toISOString(),
-    };
+// Custom Error Boundary Component
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
-    setTasks([...tasks, newTask]);
-  };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
 
-  const deleteTask = (id) => {
-    setTasks(tasks.filter((task) => task.id !== id));
-  };
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught an unhandled page crash:', error, errorInfo);
+  }
 
-  const toggleTask = (id) => {
-    setTasks(
-      tasks.map((task) =>
-        task.id === id
-          ? { ...task, completed: !task.completed }
-          : task
-      )
-    );
-  };
-
-  const editTask = (id, newText, newCategory) => {
-    setTasks(
-      tasks.map((task) =>
-        task.id === id
-          ? { ...task, text: newText, category: newCategory }
-          : task
-      )
-    );
-  };
-
-  const filteredTasks = tasks
-    .filter((task) => {
-      if (filter === "completed") return task.completed;
-      if (filter === "pending") return !task.completed;
-      return true;
-    })
-    .filter((task) => {
-      if (categoryFilter === "all") return true;
-      return task.category === categoryFilter;
-    })
-    .sort((a, b) => {
-      if (sortBy === "date-desc") {
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      }
-      if (sortBy === "date-asc") {
-        return new Date(a.createdAt) - new Date(b.createdAt);
-      }
-      if (sortBy === "alphabetical") {
-        return a.text.localeCompare(b.text);
-      }
-      return 0;
-    });
-
-  return (
-    <div className="container">
-      <header className="app-header">
-        <h1>Task Manager</h1>
-        <p className="subtitle">Organize your daily tasks beautifully</p>
-      </header>
-
-      <TaskInput addTask={addTask} categories={CATEGORIES} />
-
-      <div className="control-panel">
-        <div className="filter-group">
-          <label>Status:</label>
-          <div className="filter-buttons">
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-boundary-screen container" style={{ padding: '60px 24px', textAlign: 'center' }}>
+          <div className="glass-panel" style={{ padding: '40px', maxWidth: '500px', margin: '0 auto', background: '#151c2c' }}>
+            <h2 style={{ color: '#ef4444', marginBottom: '16px' }}>Application Error</h2>
+            <p style={{ color: '#9ca3af', marginBottom: '24px', fontSize: '0.95rem', lineHeight: '1.6' }}>
+              We apologize, but something went wrong. A crash occurred in the interface.
+            </p>
             <button
-              className={filter === "all" ? "active" : ""}
-              onClick={() => setFilter("all")}
+              onClick={() => window.location.href = '/'}
+              className="btn btn-primary"
             >
-              All
-            </button>
-            <button
-              className={filter === "completed" ? "active" : ""}
-              onClick={() => setFilter("completed")}
-            >
-              Completed
-            </button>
-            <button
-              className={filter === "pending" ? "active" : ""}
-              onClick={() => setFilter("pending")}
-            >
-              Pending
+              Reload Application
             </button>
           </div>
         </div>
+      );
+    }
 
-        <div className="filter-group">
-          <label htmlFor="category-select">Category:</label>
-          <select
-            id="category-select"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-          >
-            <option value="all">All Categories</option>
-            {CATEGORIES.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
-        </div>
+    return this.props.children;
+  }
+}
 
-        <div className="filter-group">
-          <label htmlFor="sort-select">Sort By:</label>
-          <select
-            id="sort-select"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-          >
-            <option value="date-desc">Newest First</option>
-            <option value="date-asc">Oldest First</option>
-            <option value="alphabetical">Alphabetical</option>
-          </select>
-        </div>
-      </div>
-
-      <TaskList
-        tasks={filteredTasks}
-        deleteTask={deleteTask}
-        toggleTask={toggleTask}
-        editTask={editTask}
-        categories={CATEGORIES}
-      />
+// Loading Spinner for Route Suspense Fallback
+function PageLoader() {
+  return (
+    <div className="page-suspense-loader" style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 'calc(100vh - 72px)',
+      flexDirection: 'column',
+      gap: '16px'
+    }}>
+      <div className="spinner" style={{
+        width: '40px',
+        height: '40px',
+        border: '3px solid rgba(255, 255, 255, 0.05)',
+        borderTopColor: 'var(--primary)',
+        borderRadius: '50%',
+        animation: 'spin 1s infinite linear'
+      }}></div>
+      <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+        LOADING AURA...
+      </span>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <CartProvider>
+          <Router>
+            <Navbar />
+            <main className="main-content-wrapper">
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  {/* Public Catalog Routes */}
+                  <Route path="/" element={<Home />} />
+                  <Route path="/product/:id" element={<ProductDetail />} />
+                  <Route path="/cart" element={<CartPage />} />
+                  
+                  {/* Authentication Router */}
+                  <Route path="/login" element={<LoginRegister />} />
+                  
+                  {/* Protected Checkout Route (Guard checks inside component) */}
+                  <Route path="/checkout" element={<CheckoutPage />} />
+                  
+                  {/* Fallback Catch-All Redirect */}
+                  <Route path="*" element={<Home />} />
+                </Routes>
+              </Suspense>
+            </main>
+          </Router>
+        </CartProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
