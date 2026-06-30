@@ -1,200 +1,313 @@
-# AURA E-Commerce Application
+# 🚀 Secure Task Management API (MongoDB & Node.js)
 
-A fully functional, responsive, and visually stunning React e-commerce application featuring product catalog filtering and sorting, item detail views, persistent shopping carts, simulated user authorization, secure checkout regex form validation, and performance-optimized code-splitting configurations.
+A production-grade RESTful API for task management, built using **Node.js**, **Express.js**, and **MongoDB (Mongoose ODM)**. Features secure user authentication (JWT), password hashing (Bcrypt), full CRUD operations for tasks with user associations, data validation, database indexing, and query pagination/filtering.
 
 ---
 
 ## 📚 Table of Contents
-1. [Project Overview](#-project-overview)
-2. [Component Architecture & Data Flow](#-component-architecture--data-flow)
-3. [State Management (Context API)](#-state-management-context-api)
-4. [API Integration & Fail-Safe Fallback](#-api-integration--fail-safe-fallback)
-5. [Performance Optimizations](#-performance-optimizations)
-6. [Testing & Validation Evidence](#-testing--validation-evidence)
-7. [Setup & Local Installation Guide](#-setup--local-installation-guide)
-8. [Code Structure](#-code-structure)
+1. [Project Overview & Objectives](#-project-overview--objectives)
+2. [Database Schema & ER Relationships](#-database-schema--er-relationships)
+3. [Setup & Installation Guide](#-setup--installation-guide)
+4. [Core Database Concepts Explained](#-core-database-concepts-explained)
+5. [Architecture & Code Structure](#-architecture--code-structure)
+6. [API Endpoint Specifications](#-api-endpoint-specifications)
+7. [Testing Evidence & Validation](#-testing-evidence--validation)
+8. [Deployment Guidelines](#-deployment-guidelines)
 
 ---
 
-## 🎯 Project Overview
-This Capstone Project brings together advanced frontend concepts including:
-* **Modern Routing**: Utilizes `react-router-dom` (v6) for deep linking, dynamic product detailing routes, and authentication guards.
-* **Persistent Cart**: Automatically saves shopping cart items, quantities, and calculations to `localStorage`.
-* **Simulated User Auth**: A mock database flow that enables user registration and logins (persisting sessions using `localStorage`).
-* **Regex Checkout Form Validation**: Standard client-side checks for card lengths, CVV, expiry formats, and emails.
-* **Premium Glassmorphic UI**: Adapts custom CSS theme variables to render smooth visual layouts and responsiveness (including dark/light mode toggles).
+## 🎯 Project Overview & Objectives
+This API provides a secure and scalable backend to manage tasks, featuring:
+- **MongoDB Database Integration**: Storing persistent relational data in a NoSQL environment using Mongoose schemas.
+- **Data Validation & Pre-Hooks**: Validating inputs (e.g. priority constraints) and capitalizing title strings before saves.
+- **Relationship Mapping**: Linking tasks directly to the user who created them (One-to-Many relationship).
+- **Pagination, Sorting, & Filtering**: Restricting payload size and querying tasks by category, priority, or completed status.
 
 ---
 
-## 📋 Component Architecture & Data Flow
+## 📊 Database Schema & ER Relationships
 
-Below is the visual structure representing the component hierarchies and state flows:
+The database utilizes a **One-to-Many relationship**: a `User` can own multiple `Tasks`, but each `Task` belongs to exactly one `User`.
+
+### ER Diagram (Mermaid)
 
 ```mermaid
-graph TD
-  App[App.js: Router & Layout Container] --> AuthProvider[AuthContext.js: Storing User Sessions]
-  App --> CartProvider[CartContext.js: Persistent Shopping Cart]
-  
-  AuthProvider -.-> ProtectedRoute[Protected Route Check]
-  CartProvider -.-> Nav[Navbar.js: Search, Cart Badge & Account Details]
-  
-  App --> Nav
-  App --> Suspense[Suspense Route Wrapper]
-  
-  Suspense --> Home[Home.js: Hero Section & Features Banner]
-  Home --> useProducts[useProducts.js Hook: Query Params sync]
-  Home --> ProductList[ProductList.js: Sidebar Filter Controls]
-  ProductList --> ProductCard[ProductCard.js: Price badges & Add triggers]
-  
-  Suspense --> ProductDetail[ProductDetail.js: Quantity Selector & Related Grid]
-  ProductDetail --> ProductCard
-  
-  Suspense --> CartPage[CartPage.js: Checkout Summaries & Free Shipping Progress Bar]
-  CartPage --> CartItem[CartItem.js: Quantity controls & Deletions]
-  
-  Suspense --> LoginRegister[LoginRegister.js: Login/Register Card UI]
-  
-  Suspense --> ProtectedRoute
-  ProtectedRoute --> CheckoutPage[CheckoutPage.js: Purchase Summary & Success Modal]
-  CheckoutPage --> CheckoutForm[CheckoutForm.js: Card Mockups & Regex Fields]
+erDiagram
+    USER {
+        ObjectId _id PK
+        String username
+        String email
+        String password
+        Date createdAt
+        Date updatedAt
+    }
+    TASK {
+        ObjectId _id PK
+        String title
+        String description
+        Boolean completed
+        String priority
+        Date dueDate
+        ObjectId user FK "ref: USER"
+        String category
+        Date createdAt
+        Date updatedAt
+    }
+    USER ||--o{ TASK : "owns/creates"
 ```
 
-### Component Roles
-1. **`Navbar`**: Responsive header hosting search inputs, cart count badges, dark/light toggles, and user account actions.
-2. **`ProductCard`**: Display card with ratings, prices, hover scaling, and checkmark add to cart animations.
-3. **`ProductList`**: Dynamic catalog layout containing sidebar filters (rating stars, category list, max-price range inputs) and sorting selectors.
-4. **`CartItem`**: Flex rows for cart management, adjusting quantity counters, and subtotal displays.
-5. **`CheckoutForm`**: Interactive input sections displaying a credit card mockup that updates in real-time as users type details.
+### Database Attributes & Schema Constraints
+
+| Collection | Field Name | Data Type | Key Type | Constraints / Defaults |
+| :--- | :--- | :--- | :--- | :--- |
+| **users** | `_id` | ObjectId | Primary Key | Auto-generated by MongoDB |
+| | `username` | String | | Required, unique, trimmed, length: [3, 30] |
+| | `email` | String | | Required, unique, trimmed, lowercase, regex email format |
+| | `password` | String | | Required, minlength: 6, hidden (`select: false`) |
+| **tasks** | `_id` | ObjectId | Primary Key | Auto-generated by MongoDB |
+| | `title` | String | | Required, trimmed, length: [3, 200], capitalized pre-save |
+| | `description`| String | | Trimmed, max length: 1000 |
+| | `completed` | Boolean | | Default: `false` |
+| | `priority` | String | | Enum: `['low', 'medium', 'high']`, Default: `medium` |
+| | `dueDate` | Date | | Optional |
+| | `user` | ObjectId | Foreign Key| Required (References `users._id`, Compound Indexed) |
+| | `category` | String | | Enum: `['work', 'personal', 'shopping', 'health', 'other']`, Default: `personal` |
 
 ---
 
-## 🛡️ State Management (Context API)
-
-### 1. AuthContext (`src/contexts/AuthContext.js`)
-Manages user sessions, registration records, and session data.
-* **Schema**:
-  * `user`: `{ id, name, email }` (stored in `localStorage` as `ecommerce_user`).
-  * `loading`: Determines if local storage is being checked on mount.
-* **Credentials Demo**:
-  * Email: `admin@gmail.com`
-  * Password: `admin123`
-
-### 2. CartContext (`src/contexts/CartContext.js`)
-Centralizes checkout pricing metrics and items.
-* **Calculations**:
-  * `cartCount`: Total quantities in the cart.
-  * `cartSubtotal`: Sum of `price * quantity`.
-  * `cartShipping`: Shipping fee ($9.99, or free for orders over $100).
-  * `cartTax`: 8% sales tax.
-  * `cartTotal`: Sum of subtotal, shipping, and tax.
-* **Operations**: `addToCart()`, `removeFromCart()`, `updateQuantity()`, `clearCart()`.
-
----
-
-## 🌐 API Integration & Fail-Safe Fallback
-
-Our API manager (`src/services/api.js`) communicates with **FakeStoreAPI** endpoints to retrieve categories and products. If FakeStoreAPI goes offline, is rate-limited, or has slow response times, the service catches the network failure and returns cached mock products.
-
-* **Endpoints used**:
-  * `GET /products`
-  * `GET /products/:id`
-  * `GET /products/categories`
-
----
-
-## ⚡ Performance Optimizations
-
-1. **Lazy Loading**: Router paths utilize `React.lazy()` and `React.Suspense` to split code chunks (e.g. `main.js`, `cart.chunk.js`, `detail.chunk.js`), reducing initial page load weight.
-2. **Memoized Computations**: Heavy operations, such as filters/sorts in `useProducts.js` and total sums in `CartContext.js`, are wrapped in `useMemo` so that they only recalculate when their dependencies change.
-3. **Image Optimization**: Card images use native HTML `loading="lazy"` tags to prevent blockages during catalog grids rendering.
-
----
-
-## 📋 Testing & Validation Evidence
-
-### Manual Verification Cases
-
-| Test Feature | Steps | Expected Result | Status |
-|---|---|---|---|
-| **Catalog Filter** | Click "Electronics" category | Only electronics products are shown in the grid. | Pass ✅ |
-| **Catalog Search** | Type "backpack" in search bar | Grid filters down to matching title items instantly. | Pass ✅ |
-| **Price Slider** | Drag price slider to $50.00 | Only items priced under $50.00 remain visible. | Pass ✅ |
-| **Persistence** | Add items, refresh browser page | Cart badge number and items list persist exactly. | Pass ✅ |
-| **Free Shipping Meter** | Add $80 worth of items, review Cart Page | Progress bar displays and alerts that $20 more unlocks free shipping. | Pass ✅ |
-| **Auth Route Guard** | Visit `/checkout` while logged out | Redirected to `/login` with location parameters preserved. | Pass ✅ |
-| **Demo Login** | Type `admin@gmail.com` and `admin123` | Logged in successfully, redirecting to Checkout automatically. | Pass ✅ |
-| **Checkout Error Checks** | Submit billing with blank fields or card length `< 16` | Specific error boundaries show underneath input lines. | Pass ✅ |
-| **Secure Checkout Success** | Submit valid details in the form | Modal popup shows Order Number, Receipt totals, and clears Cart. | Pass ✅ |
-
----
-
-## 🛠️ Setup & Local Installation Guide
+## 🛠️ Setup & Installation Guide
 
 ### Prerequisites
-Ensure you have [Node.js](https://nodejs.org/) installed (v16.0.0 or higher recommended).
+- **Node.js** (v18.0.0 or higher recommended)
+- **npm** (v9.0.0 or higher)
+- **MongoDB** (A running local daemon or a MongoDB Atlas cloud cluster URI)
 
-### 1. Clone & Navigate
-```bash
-cd "/Users/sangarajujayakrishna/Desktop/Task manager"
-```
-
-### 2. Install Packages
+### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-### 3. Launch Development Server
+### 2. Configure Environment Variables
+Create a `.env` file in the root directory (based on `.env.example`):
+```env
+PORT=3000
+NODE_ENV=development
+MONGODB_URI=mongodb://127.0.0.1:27017/task-db
+JWT_SECRET=super_secret_blog_api_dev_key_12345
+JWT_EXPIRES_IN=7d
+```
+
+### 3. Run the Server
+#### Development Mode (With Auto-Restart)
+```bash
+npm run dev
+```
+#### Production Mode
 ```bash
 npm start
 ```
-The app will open automatically at `http://localhost:3000`.
+The server runs at `http://localhost:3000` and Swagger documentation is served at `http://localhost:3000/api-docs`.
 
-### 4. Build Production Bundle
-```bash
-npm run build
+---
+
+## 🧠 Core Database Concepts Explained
+
+### 1. NoSQL Databases & MongoDB
+Unlike relational SQL databases, MongoDB is a **NoSQL document database**. It stores data in JSON-like format called **BSON** (Binary JSON). This provides:
+- **Flexible Schema Structure**: Documents in the same collection do not need to share the same fields, allowing for quick schema updates.
+- **Scalability**: Designed to scale out horizontally by sharding data across multiple servers.
+
+### 2. Mongoose ODM (Object Document Mapper)
+Mongoose acts as a bridge between Node.js and MongoDB, providing structure and validation:
+- **Schemas & Models**: Defines the structure of the documents and turns them into models we can query.
+- **Validations**: Enforces constraints (e.g. enums, min/max values) at the application level before data is sent to MongoDB.
+- **Middleware Pre-Hooks**: Allows executing code before certain operations, such as hashing passwords before `save` or capitalizing titles.
+- **Indexes**: Adds indexes to database collections to speed up common searches (e.g., compound index on `{ user: 1, completed: 1 }`).
+
+---
+
+## 💻 Architecture & Code Structure
+
+```text
+Task-Manager/
+├── src/
+│   ├── config/
+│   │   └── database.js         # Mongoose connection setup & shutdown handlers
+│   ├── controllers/
+│   │   ├── userController.js   # User registration, login, and profile fetching
+│   │   └── taskController.js   # Task CRUD, pagination, and sorting
+│   ├── middleware/
+│   │   ├── auth.js             # JWT extraction, verification, & req.userId inject
+│   │   ├── errorHandler.js     # Unified error parser (Cast, Validation, Dups, JWT)
+│   │   ├── logger.js           # Terminal logger printing path and speed
+│   │   └── validation.js       # Pre-validation of input formats (email, length, etc.)
+│   ├── models/
+│   │   ├── User.js             # User Schema (pre-save hash, comparePassword helper)
+│   │   └── Task.js             # Task Schema (enums, indexes, pre-save capitalize)
+│   ├── routes/
+│   │   ├── userRoutes.js       # User auth endpoints and Swagger configurations
+│   │   └── taskRoutes.js       # Task CRUD endpoints and Swagger configurations
+│   └── tests/
+│       └── test_api.js         # Integration tests running in-memory (0 dependency)
+├── server.js                   # Server bootloader, Swagger compiler, route register
+├── package.json                # Project configurations & dependency versions
+├── .env.example                # Template environmental setups
+└── README.md                   # Full documentation (this file)
 ```
 
 ---
 
-## 💻 Code Structure
-```text
-AURA-ECommerce/
-├── public/                 # HTML framework and asset configurations
-├── src/
-│   ├── components/
-│   │   ├── Cart/
-│   │   │   ├── CartItem.js      # Cart row card with item counters
-│   │   │   └── CartItem.css
-│   │   ├── Checkout/
-│   │   │   ├── CheckoutForm.js  # Form validation & Card mockup display
-│   │   │   └── CheckoutForm.css
-│   │   ├── Navbar/
-│   │   │   ├── Navbar.js        # Header search, badges & theme toggling
-│   │   │   └── Navbar.css
-│   │   ├── ProductCard/
-│   │   │   ├── ProductCard.js   # Single item catalog display card
-│   │   │   └── ProductCard.css
-│   │   └── ProductList/
-│   │       ├── ProductList.js   # Main layout catalog with filter sidebar
-│   │       └── ProductList.css
-│   ├── contexts/
-│   │   ├── AuthContext.js       # Stored credentials & active login state
-│   │   └── CartContext.js       # Persistent array calculations
-│   ├── hooks/
-│   │   └── useProducts.js       # Query selectors & product searches hook
-│   ├── pages/
-│   │   ├── CartPage.js          # Cart details view & Free shipping indicator
-│   │   ├── CheckoutPage.js      # Billing forms and order receipt details
-│   │   ├── Home.js              # Home banner, marketing lists and featured grids
-│   │   ├── LoginRegister.js     # Auth templates
-│   │   └── ProductDetail.js     # Specific item details & same-category suggestions
-│   ├── services/
-│   │   └── api.js               # API controllers with offline mock database
-│   ├── styles/
-│   │   ├── theme.css            # Adaptive variables & HSL themes
-│   │   └── global.css           # Global resets and loading shimmer animations
-│   ├── App.js                   # Routing setups & Error Boundaries
-│   └── index.js                 # React mounting configurations
-├── package.json                 # Script commands & package dependencies
-└── README.md                    # Project documentation (this file)
+## 📋 API Endpoint Specifications
+
+### 🔑 Authentication (`/api/auth`)
+
+#### 1. Register User
+- **Endpoint**: `POST /api/auth/register`
+- **Access**: Public
+- **Request Body**:
+  ```json
+  {
+    "username": "john_doe",
+    "email": "john@example.com",
+    "password": "password123"
+  }
+  ```
+- **Response (201 Created)**: Returns the user ID and a signed JWT authorization token.
+
+#### 2. Login User
+- **Endpoint**: `POST /api/auth/login`
+- **Access**: Public
+- **Request Body**:
+  ```json
+  {
+    "email": "john@example.com",
+    "password": "password123"
+  }
+  ```
+- **Response (200 OK)**: Returns profile and JWT.
+
+#### 3. Get Profile
+- **Endpoint**: `GET /api/auth/profile`
+- **Access**: Private (Requires `Authorization: Bearer <token>`)
+- **Response (200 OK)**: Returns profile details.
+
+---
+
+### 📝 Tasks (`/api/tasks`)
+
+#### 1. Create Task
+- **Endpoint**: `POST /api/tasks`
+- **Access**: Private (Requires `Authorization: Bearer <token>`)
+- **Request Body**:
+  ```json
+  {
+    "title": "complete task API",
+    "description": "Write mongoose models and verify connections.",
+    "priority": "high",
+    "category": "work",
+    "dueDate": "2026-07-05T12:00:00Z"
+  }
+  ```
+- **Response (201 Created)**: Returns the task document. Notice that the title will be capitalized to `"Complete task API"` automatically before saving.
+
+#### 2. Get All Tasks
+- **Endpoint**: `GET /api/tasks`
+- **Access**: Private (Requires `Authorization: Bearer <token>`)
+- **Query Parameters**:
+  - `completed` (boolean string): Filter by completion status (`?completed=false`).
+  - `priority` (string): Filter by priority (`?priority=high`).
+  - `category` (string): Filter by category (`?category=work`).
+  - `page` (number, default: `1`): Pagination page.
+  - `limit` (number, default: `10`): Max results.
+- **Response (200 OK)**: Returns the user's tasks list and pagination metadata.
+
+#### 3. Get Task By ID
+- **Endpoint**: `GET /api/tasks/:id`
+- **Access**: Private (Task Owner only)
+- **Response (200 OK)**: Returns details of a specific task.
+
+#### 4. Update Task
+- **Endpoint**: `PUT /api/tasks/:id`
+- **Access**: Private (Task Owner only)
+- **Request Body**:
+  ```json
+  {
+    "completed": true,
+    "priority": "medium"
+  }
+  ```
+- **Response (200 OK)**: Returns the updated task document.
+
+#### 5. Delete Task
+- **Endpoint**: `DELETE /api/tasks/:id`
+- **Access**: Private (Task Owner only)
+- **Response (200 OK)**: Deletes the task from database.
+
+---
+
+## 🧪 Testing Evidence & Validation
+
+A self-contained integration test suite is included in [test_api.js](file:///Users/sangarajujayakrishna/Desktop/Task%20manager/src/tests/test_api.js). It mocks Mongoose operations in-memory to ensure you can run validation tests out-of-the-box.
+
+### Run Tests:
+```bash
+node src/tests/test_api.js
 ```
+
+### Successful Test Log Output:
+```text
+[MOCK DB] MongoDB Mock Connection Established
+====================================================
+🚀 Task Manager API Server running in test mode
+🌐 Local URL: http://localhost:3001
+📚 API Documentation: http://localhost:3001/api-docs
+====================================================
+MongoDB Connected: in-memory-mock-tasks-db
+
+============================================
+🏁 RUNNING TASK MANAGER API INTEGRATION TESTS
+============================================
+
+[2026-06-30T16:52:36.400Z] GET /api/health 200 - 7ms
+✅ PASS: Health Check /api/health
+[2026-06-30T16:52:36.497Z] POST /api/auth/register 201 - 81ms
+✅ PASS: Register New User /api/auth/register
+[2026-06-30T16:52:36.499Z] POST /api/auth/register 400 - 1ms
+✅ PASS: Prevent Duplicate Email Registration
+[2026-06-30T16:52:36.572Z] POST /api/auth/login 200 - 72ms
+✅ PASS: Login User /api/auth/login
+[2026-06-30T16:52:36.573Z] GET /api/auth/profile 200 - 1ms
+✅ PASS: Get User Profile /api/auth/profile
+[2026-06-30T16:52:36.575Z] POST /api/tasks 201 - 1ms
+✅ PASS: Create Task with Capitalized Title
+[2026-06-30T16:52:36.575Z] POST /api/tasks 401 - 0ms
+✅ PASS: Prevent Unauthenticated Task Creation
+[2026-06-30T16:52:36.577Z] GET /api/tasks?page=1&limit=5 200 - 1ms
+✅ PASS: Get Tasks Paginated /api/tasks
+[2026-06-30T16:52:36.577Z] GET /api/tasks?completed=false&priority=high 200 - 0ms
+✅ PASS: Get Tasks with Filter Options
+[2026-06-30T16:52:36.579Z] GET /api/tasks/mock_task_9os92o4n8 200 - 1ms
+✅ PASS: Get Single Task by ID /api/tasks/:id
+[2026-06-30T16:52:36.580Z] PUT /api/tasks/mock_task_9os92o4n8 200 - 1ms
+✅ PASS: Update Task to Completed
+[2026-06-30T16:52:36.580Z] DELETE /api/tasks/mock_task_9os92o4n8 200 - 0ms
+✅ PASS: Delete Task by ID
+
+============================================
+📊 TASK MANAGER TEST RESULTS
+   Passed: 12 / 12
+   Failed: 0
+============================================
+```
+
+---
+
+## 🚀 Deployment Guidelines
+
+### Deploying to Render
+1. Connect your repository to **Render.com** as a **Web Service**.
+2. Configure environment variables in the dashboard:
+   - `MONGODB_URI` = `mongodb+srv://...` (Your MongoDB Atlas connection string)
+   - `JWT_SECRET` = `[ProductionSecretKey]`
+   - `NODE_ENV` = `production`
+3. Launch with `npm install` and `npm start`.

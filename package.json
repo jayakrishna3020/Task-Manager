@@ -1,29 +1,20 @@
 {
-  "name": "aura-ecommerce",
+  "name": "task-manager-api",
   "version": "1.0.0",
-  "private": true,
-  "dependencies": {
-    "lucide-react": "^1.21.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^7.18.0",
-    "react-scripts": "5.0.1"
-  },
+  "description": "Secure Task Management backend API with MongoDB Mongoose integration and user authentication",
+  "main": "server.js",
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.4.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0"
   }
 }
